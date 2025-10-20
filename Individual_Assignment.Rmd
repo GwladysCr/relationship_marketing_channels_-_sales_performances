@@ -1,0 +1,446 @@
+---
+title: "Untitled"
+output: html_document
+date: "2024-03-24"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(vars)
+library(readxl)
+library(ggplot2)
+library(tseries)
+library(stargazer)
+library(lmtest)
+```
+
+```{r}
+data = read_excel('b2b_furniture_omnichannel.xls')
+
+# Modify the emailing variable to create a budget variable
+data["Emailing"] <- data["Emailing"]*0.1
+```
+
+
+```{r}
+#Current budget allocation
+
+cost_adwords<-sum(data$Adwords)
+cost_flyer<-sum(data$Flyer)
+cost_cat<-sum(data$Catalog)
+cost_em<-sum(data$Emailing)
+cost_total <- cost_adwords + cost_flyer + cost_cat + cost_em
+
+costshare_adwords<-cost_adwords/cost_total
+costshare_flyer<-cost_flyer/cost_total
+costshare_cat<-cost_cat/cost_total
+costshare_em  <- cost_em/cost_total
+```
+
+```{r}
+# Ingredients for the pie-chart 
+slices_actual<-c(costshare_cat, costshare_adwords, costshare_flyer, costshare_em )
+lbls_actual<-c("Catalog", "Adwords", "Flyer", "Email")
+pct_actual<-round(slices_actual*100)
+lbls_actual<-paste(lbls_actual, pct_actual)          # add data to labels
+lbls_actual<-paste(lbls_actual, "%", sep="")  # add % sign to labels
+
+# Get the pie-chart
+pie(slices_actual, labels=lbls_actual, col=rainbow(length(lbls_actual)), main="Current Budget Allocation" )
+```
+
+```{r}
+mean(data$Online_orders)
+mean(data$Offline_orders)
+mean(data$Offline_orders)/mean(data$Online_orders)
+```
+```{r}
+fit <- lm(Revenues ~ Offline_orders + Online_orders, data)
+summary(fit)
+```
+
+
+```{r}
+
+columns_to_transform <- c("Flyer", "Catalog", "Adwords", "Emailing", "Discounts", "Visits", "Online_leads", "Online_quotes", "Online_orders", "Offline_leads", "offline_quotes_new", "Offline_orders", "Revenues")
+
+# Logarithmic transformation of selected columns
+data[c("LFlyer", "LCatalog", "LAdwords", "LEmailing", "LDiscounts", "LVisits", "LOnline_leads", "LOnline_quotes", "LOnline_orders", "LOffline_leads", "Loffline_quotes_new", "LOffline_orders", "LRevenues")] <- log(data[columns_to_transform] + 1)
+
+Fl <- ts(data["LFlyer"], frequency = 52)
+C <- ts(data["LCatalog"], frequency = 52)
+A <- ts(data["LAdwords"], frequency = 52)
+E <- ts(data["LEmailing"], frequency = 52)
+D <- ts(data["LDiscounts"], frequency = 52)
+On <- ts(data["LOnline_orders"], frequency = 52)
+Off <- ts(data["LOffline_orders"], frequency = 52)
+R <- ts(data["LRevenues"], frequency = 52)
+
+```
+
+
+### Perform unit root tests to check for non-stationary variables and take differences of the variables that are evolving
+
+```{r}
+# Function to apply ADF test on each column of the dataframe
+
+adf.test(Fl)
+adf.test(C)
+adf.test(A)
+adf.test(E)
+adf.test(D)
+adf.test(On)
+adf.test(Off)
+```
+
+```{r}
+DA <- diff(A, differences = 1)
+DE <- diff(E, differences = 1)
+DOn<- diff(On, differences = 1)
+```
+
+```{r}
+# Testing stationnarity of the new time series
+adf.test(DA)
+adf.test(DE)
+adf.test(DOn)
+```
+
+## Construct a VAR model
+
+```{r}
+total <- window(cbind(Fl, C, DA, DE, D, DOn, Off), start = c(1, 2))
+
+vart <- VAR(total, ic="AIC", lag.max=1, type="both")
+
+
+causality(vart, cause='D')
+```
+
+Built dataset to create the VAR models.
+```{r warning=FALSE}
+#Build a dataset for VAR model
+data <- window(cbind(Fl, C, DA, DE, DOn, Off), start = c(1, 2))
+D <- window(cbind(D), start=c(1,2))
+```
+
+
+Estimate VAR for Online_orders and summarize the results in the table below. 
+```{r}
+varp <- VAR(data, ic="AIC", p=1, type="both", exogen=D)
+
+lmp <- varp$varresult
+
+names = c('LFlyer', 'LCatalog', 'DLAdwords', 'DLEmailing', 'DLOnline Orders', 'LOffline Orders', 'LDiscounts')
+column.labels <- rep(names, each = varp$p + 1)
+
+stargazer(lmp$Fl, lmp$C, lmp$DA, lmp$DE, lmp$DOn, lmp$Off, 
+          column.labels = names, 
+          type = "text", dep.var.labels.include = FALSE)
+
+```
+
+### Checking residuals
+```{r}
+online.residuals <- data.frame(residuals(varp))$DOn
+offline.residuals <- data.frame(residuals(varp))$Off
+online.residuals <- ts(online.residuals, frequency = 4, start = c(1, 1))
+offline.residuals <- ts(offline.residuals, frequency = 4, start = c(1, 1))
+round(mean(online.residuals),4)
+plot(online.residuals)
+round(mean(offline.residuals),4)
+plot(offline.residuals)
+```
+```{r}
+#Autocorrelation
+acf(online.residuals)
+pacf(online.residuals)
+acf(offline.residuals)
+pacf(offline.residuals)
+```
+
+
+## GIRF Analysis
+
+
+```{r}
+
+irfs <- irf(varp, impulse = c('Fl', 'C', 'DA', 'DE'), 
+            response = c('DOn', 'Off'),
+            runs = 100, n.ahead = 7, ortho = TRUE, ci=0.95)
+
+plot(irfs)
+```
+
+
+## Immediate and Long-Term Effects
+
+
+```{r}
+#Make a table to summarize IRF coefficients and their confidence intervals
+
+ irf.table.ci <- round(data.frame(
+  period = seq(1, 8),
+  response.Adwords = irfs$irf$DA, 
+  Adwords.lower = irfs$Lower$DA, 
+  Adwords.upper = irfs$Upper$DA, 
+  response.flyer = irfs$irf$Fl, 
+  flyer.lower = irfs$Lower$Fl, 
+  flyer.upper = irfs$Upper$Fl,
+  response.catalog = irfs$irf$C, 
+  catalog.lower = irfs$Lower$C, 
+  catalog.upper = irfs$Upper$C, 
+  response.email = irfs$irf$DE, 
+  email.lower = irfs$Lower$DE, 
+  email.upper = irfs$Upper$DE
+), 4)
+
+# Specify column names directly
+#colnames(irf.table.ci) <- c('Period', 'DLAdwords_Online', 'DLAdwords_Offline', 'DLAdwords Lower_Online', 'DLAdwords Lower_Offline', 'DLAdwords Upper', 'LFLYER', 'LFlyer Lower', 'LFlyer Upper', 'LCatalog', 'LCatalog Lower', 'LCatalog Upper','DLEmailing', 'DLEmailing Lower', 'DLEmailing Upper', 'LDiscounts', 'LDiscounts Lower', 'LDiscounts Upper')
+
+knitr::kable(irf.table.ci)
+```
+
+## t>1 criteria
+
+```{r}
+#Adwords
+On <- irf.table.ci$response.Adwords.DOn
+Off <- irf.table.ci$response.Adwords.Off
+On_lower <- irf.table.ci$Adwords.lower.DOn
+Off_lower <- irf.table.ci$Adwords.lower.Off
+On_upper <- irf.table.ci$Adwords.upper.DOn
+Off_upper <- irf.table.ci$Adwords.upper.Off
+
+# Calculate standard errors
+se_On <- (On_upper - On_lower) / (2 * 1.96)
+se_Off <- (Off_upper - Off_lower) / (2 * 1.96)
+
+# Initialize result matrix
+result_irf_adwords <- matrix(0, nrow = 8, ncol = 2)
+
+# Apply condition to fill result matrix
+result_irf_adwords[On / se_On > 1, 1] <- On[On / se_On > 1]
+result_irf_adwords[Off / se_Off > 1, 2] <- Off[Off / se_Off > 1]
+
+result_irf_adwords #print out the results
+lr_adwords <- sum(result_irf_adwords)
+lr_adwords_on <- sum(result_irf_adwords[,1])
+lr_adwords_off <- sum(result_irf_adwords[,2])
+lr_adwords
+lr_adwords_on
+lr_adwords_off
+```
+
+```{r}
+#Flyer spending
+
+On <- irf.table.ci$response.flyer.DOn
+Off <- irf.table.ci$response.flyer.Off
+On_lower <- irf.table.ci$flyer.lower.DOn
+Off_lower <- irf.table.ci$flyer.lower.Off
+On_upper <- irf.table.ci$flyer.upper.DOn
+Off_upper <- irf.table.ci$flyer.upper.Off
+
+# Calculate standard errors
+se_On <- (On_upper - On_lower) / (2 * 1.96)
+se_Off <- (Off_upper - Off_lower) / (2 * 1.96)
+
+# Initialize result matrix
+result_irf_flyers <- matrix(0, nrow = 8, ncol = 2)
+
+# Apply condition to fill result matrix
+result_irf_flyers[On / se_On > 1, 1] <- On[On / se_On > 1]
+result_irf_flyers[Off / se_Off > 1, 2] <- Off[Off / se_Off > 1]
+
+result_irf_flyers #print out the results
+lr_flyers <- sum(result_irf_flyers)
+lr_flyers_on <- sum(result_irf_flyers[,1])
+lr_flyers_off <- sum(result_irf_flyers[,2])
+lr_flyers
+lr_flyers_on
+lr_flyers_off
+```
+
+
+```{r}
+#Catalog spending
+
+On <- irf.table.ci$response.catalog.DOn
+Off <- irf.table.ci$response.catalog.Off
+On_lower <- irf.table.ci$catalog.lower.DOn
+Off_lower <- irf.table.ci$catalog.lower.Off
+On_upper <- irf.table.ci$catalog.upper.DOn
+Off_upper <- irf.table.ci$catalog.upper.Off
+
+# Calculate standard errors
+se_On <- (On_upper - On_lower) / (2 * 1.96)
+se_Off <- (Off_upper - Off_lower) / (2 * 1.96)
+
+# Initialize result matrix
+result_irf_catalog <- matrix(0, nrow = 8, ncol = 2)
+
+# Apply condition to fill result matrix
+result_irf_catalog[On / se_On > 1, 1] <- On[On / se_On > 1]
+result_irf_catalog[Off / se_Off > 1, 2] <- Off[Off / se_Off > 1]
+
+result_irf_catalog #print out the results
+lr_catalog <- sum(result_irf_catalog)
+lr_catalog_on <- sum(result_irf_catalog[,1])
+lr_catalog_off <- sum(result_irf_catalog[,2])
+lr_catalog
+lr_catalog_on
+lr_catalog_off
+```
+
+
+```{r}
+#Email spending
+On <- irf.table.ci$response.email.DOn
+Off <- irf.table.ci$response.email.Off
+On_lower <- irf.table.ci$email.lower.DOn
+Off_lower <- irf.table.ci$email.lower.Off
+On_upper <- irf.table.ci$email.upper.DOn
+Off_upper <- irf.table.ci$email.upper.Off
+
+# Calculate standard errors
+se_On <- (On_upper - On_lower) / (2 * 1.96)
+se_Off <- (Off_upper - Off_lower) / (2 * 1.96)
+
+# Initialize result matrix
+result_irf_email <- matrix(0, nrow = 8, ncol = 2)
+
+# Apply condition to fill result matrix
+result_irf_email[On / se_On > 1, 1] <- On[On / se_On > 1]
+result_irf_email[Off / se_Off > 1, 2] <- Off[Off / se_Off > 1]
+
+result_irf_email #print out the results
+lr_email <- sum(result_irf_email)
+lr_email_on <- sum(result_irf_email[,1])
+lr_email_off <- sum(result_irf_email[,2])
+lr_email
+lr_email_on
+lr_email_off
+```
+
+### Optimal Allocation
+
+
+```{r}
+
+#Get the coefficients from IRF results
+beta_adwords<-lr_adwords
+beta_flyer<-lr_flyers
+beta_cat<-lr_catalog
+beta_em<-lr_email
+
+#The sum of all elasticities 
+beta_all<-beta_adwords+beta_flyer+beta_cat+beta_em
+
+#Optimal resource allocation
+optim_adwords<-beta_adwords/beta_all
+optim_flyer<-beta_flyer/beta_all
+optim_cat<-beta_cat/beta_all
+optim_em<-beta_em/beta_all
+```
+
+Having figured out the optimal budget allocation, we can now create another pie chart so that we can compare:
+
+```{r}
+## Pie-chart ingredients 
+optimal_spend<-c(optim_adwords,optim_flyer, optim_cat, optim_em)
+optimal_spend=round(optimal_spend, digits=5)
+optimal_spend
+
+slices_optim<-c(optim_adwords, optim_flyer, optim_cat, optim_em)
+lbls_optim<-c("Adwords", "Flyer", "Catalog", "Email")
+pct_optim<-round(slices_optim*100)
+lbls_optim<-paste(lbls_optim, pct_optim)   # paste variable names to data labels 
+lbls_optim<-paste(lbls_optim, "%", sep="") # add % sign to labels
+
+# Get the pie-chart
+pie(slices_optim, labels=lbls_optim, col=rainbow(length(lbls_optim)), main="Optimal Budget Allocation" )
+
+```
+
+```{r}
+
+#Get the coefficients from IRF results
+beta_adwords<-lr_adwords_on
+beta_flyer<-lr_flyers_on
+beta_cat<-lr_catalog_on
+beta_em<-lr_email_on
+
+#The sum of all elasticities 
+beta_all<-beta_adwords+beta_flyer+beta_cat+beta_em
+
+#Optimal resource allocation
+optim_adwords<-beta_adwords/beta_all
+optim_flyer<-beta_flyer/beta_all
+optim_cat<-beta_cat/beta_all
+optim_em<-beta_em/beta_all
+```
+
+
+
+```{r}
+## Pie-chart ingredients 
+optimal_spend<-c(optim_adwords,optim_flyer, optim_cat, optim_em)
+optimal_spend=round(optimal_spend, digits=5)
+optimal_spend
+
+slices_optim<-c(optim_adwords, optim_flyer, optim_cat, optim_em)
+lbls_optim<-c("Adwords", "Flyer", "Catalog", "Email")
+pct_optim<-round(slices_optim*100)
+lbls_optim<-paste(lbls_optim, pct_optim)   # paste variable names to data labels 
+lbls_optim<-paste(lbls_optim, "%", sep="") # add % sign to labels
+
+# Get the pie-chart
+pie(slices_optim, labels=lbls_optim, col=rainbow(length(lbls_optim)), main="Optimal Budget Allocation" )
+
+```
+```{r}
+
+#Get the coefficients from IRF results
+beta_adwords<-lr_adwords_off
+beta_flyer<-lr_flyers_off
+beta_cat<-lr_catalog_off
+beta_em<-lr_email_off
+
+#The sum of all elasticities 
+beta_all<-beta_adwords+beta_flyer+beta_cat+beta_em
+
+#Optimal resource allocation
+optim_adwords<-beta_adwords/beta_all
+optim_flyer<-beta_flyer/beta_all
+optim_cat<-beta_cat/beta_all
+optim_em<-beta_em/beta_all
+```
+
+
+
+```{r}
+## Pie-chart ingredients 
+optimal_spend<-c(optim_adwords,optim_flyer, optim_cat, optim_em)
+optimal_spend=round(optimal_spend, digits=5)
+optimal_spend
+
+slices_optim<-c(optim_adwords, optim_flyer, optim_cat, optim_em)
+lbls_optim<-c("Adwords", "Flyer", "Catalog", "Email")
+pct_optim<-round(slices_optim*100)
+lbls_optim<-paste(lbls_optim, pct_optim)   # paste variable names to data labels 
+lbls_optim<-paste(lbls_optim, "%", sep="") # add % sign to labels
+
+# Get the pie-chart
+pie(slices_optim, labels=lbls_optim, col=rainbow(length(lbls_optim)), main="Optimal Budget Allocation" )
+
+```
+
+
+
+
+
+

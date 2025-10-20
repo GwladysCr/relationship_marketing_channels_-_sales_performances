@@ -13,13 +13,11 @@
 
 ## 1. Objective
 
-The objective of this report is to analyse the **dynamic relationships among marketing channel spendings and sales performance metrics**.  
-
-In today's highly competitive business environment, effective allocation of marketing budgets is essential for maximising sales and revenue growth. However, with the rise of digital channels and changing consumer behaviour, understanding how marketing expenditures affect sales outcomes has become increasingly complex.
-
-Through **Vector Autoregressive (VAR)** models and **Impulse Response Function (IRF)** analysis, we aim to uncover short- and long-term effects of marketing expenditures on sales performance and identify optimal budget allocations for each channel.
-
-These insights help marketing managers optimise resource allocation, refine strategies, and drive sustainable business growth.
+The objective of this report is to **analyse the dynamic relationships among marketing channel spendings and sales performance metrics**.
+In today's competitive business landscape, effective allocation of marketing budgets is crucial for maximising sales and revenue growth.
+However, with the proliferation of digital marketing channels and evolving consumer behaviour, understanding the intricate relationships between marketing expenditures and sales outcomes has become increasingly complex.
+Through **Vector Autoregressive (VAR)** models and **Impulse Response Function (IRF)** analysis, we aim to uncover the short- and long-term effects of marketing expenditures on sales performance and identify optimal budget allocations for each marketing channel.
+By analysing the dataset, this report provides actionable insights for marketing managers and decision-makers to refine marketing strategies, enhance resource allocation efficiency, and ultimately drive sustainable business growth.
 
 ---
 
@@ -46,7 +44,7 @@ The chosen dataset is the **B2B Furniture Omnichannel Dataset**, which contains 
 
 ### A. Data Preprocessing
 
-Before analysis, the dataset was cleaned and preprocessed.
+Before analysis, the dataset needs to be preprocessed.
 
 To determine optimal budget allocation, we used the variables **Flyer**, **Catalog**, **Adwords**, and **Emailing**.  
 Since only three of these represent actual budgets, the price per email sent was assumed to be **$0.10** to integrate email campaigns into the marketing budget.
@@ -86,7 +84,7 @@ The VAR model assumes stationarity.
 We applied the **Augmented Dickey-Fuller (ADF) test)**, revealing that:
 
 - `Adwords`, `Emailing`, and `Online_orders` were **non-stationary**  
-- Their **first differences** were used for further analysis  
+- Their **first differentiation** were used for further analysis  
 
 #### Exogeneity
 
@@ -107,7 +105,8 @@ Residual plots showed randomness around zero with minor autocorrelation at lag 2
 To avoid overfitting, a lag of **1** was retained.
 
 > *Figure 3: ACF plots of the online (top) and offline (bottom) residuals*  
-> ![ACF Plots](./images/image3.png)
+> ![ACF Plots](./images/image4.png)
+> ![ACF Plots](./images/image5.png)
 
 ---
 
@@ -117,7 +116,11 @@ To assess short- and long-term effects, an **Orthogonalised Impulse Response Fun
 Orthogonalisation isolates the unique impact of shocks on each response variable.
 
 > *Figure 4: IRF plots*  
-> ![IRF Plots](./images/image4.png)
+> ![IRF Plots](./images/image6.png)
+> ![IRF Plots](./images/image7.png)
+> ![IRF Plots](./images/image8.png)
+> ![IRF Plots](./images/image9.png)
+
 
 #### Key Observations
 - Online and offline orders respond **positively and immediately** to most impulses except `Adwords`.  
@@ -141,7 +144,6 @@ Orthogonalisation isolates the unique impact of shocks on each response variable
 | **Emailing** | 0.0312 | 0.0069 |
 
 > *Figure 5: Aggregate Measures from IRF Coefficients*  
-> ![Aggregate Measures](./images/image5.png)
 
 ---
 
@@ -154,14 +156,16 @@ w_i = \frac{E_i}{\sum E_i}
 $$
 
 > *Figure 6: Optimal Budget Allocation*  
-> ![Optimal Budget Allocation](./images/image6.png)
+> ![Aggregate Measures](./images/image10.png)
 
 Compared to the current allocation:
 - **Flyer** spending should decrease.  
 - **Catalog** spending should increase.
 
-> *Figure 7: Optimal budget allocation for online (left) and offline (right) sales*  
-> ![Optimal Online vs Offline](./images/image7.png)
+> *Figure 7: Optimal budget allocation for offline sales*  
+> ![Aggregate Measures](./images/image11.png)
+> *Figure 8: Optimal budget allocation for online sales*  
+> ![Aggregate Measures](./images/image12.png)
 
 These findings confirm:
 - Flyers have major impact on **offline** sales.  

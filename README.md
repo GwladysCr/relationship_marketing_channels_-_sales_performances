@@ -14,8 +14,10 @@
 ## 1. Objective
 
 The objective of this report is to **analyse the dynamic relationships among marketing channel spendings and sales performance metrics**.
+
 In today's competitive business landscape, effective allocation of marketing budgets is crucial for maximising sales and revenue growth.
 However, with the proliferation of digital marketing channels and evolving consumer behaviour, understanding the intricate relationships between marketing expenditures and sales outcomes has become increasingly complex.
+
 Through **Vector Autoregressive (VAR)** models and **Impulse Response Function (IRF)** analysis, we aim to uncover the short- and long-term effects of marketing expenditures on sales performance and identify optimal budget allocations for each marketing channel.
 By analysing the dataset, this report provides actionable insights for marketing managers and decision-makers to refine marketing strategies, enhance resource allocation efficiency, and ultimately drive sustainable business growth.
 
